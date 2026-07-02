@@ -1,0 +1,9 @@
+version: '3.8'
+
+services:
+  web-app:
+    build: .
+    container_name: prod-web-app
+    ports:
+      - "80:80"
+    restart: always
