@@ -1,45 +1,301 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Production Web App</title>
-    <style>
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: #0f172a;
-            color: #f8fafc;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
-            margin: 0;
-        }
-        .container {
-            text-align: center;
-            padding: 3rem;
-            background: #1e293b;
-            border-radius: 12px;
-            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.5);
-            border: 1px solid #334155;
-        }
-        h1 { color: #38bdf8; margin-bottom: 0.5rem; }
-        p { color: #94a3b8; font-size: 1.1rem; }
-        .badge {
-            background: #10b981;
-            color: white;
-            padding: 0.25rem 0.75rem;
-            border-radius: 9999px;
-            font-size: 0.85rem;
-            font-weight: bold;
-        }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CAL_TO_AL Converter 2.0</title>
+
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+<style>
+
+*{
+    margin:0;
+    padding:0;
+    box-sizing:border-box;
+}
+
+body{
+    font-family:'Poppins',sans-serif;
+    min-height:100vh;
+    display:flex;
+    justify-content:center;
+    align-items:center;
+    background:
+    radial-gradient(circle at top left,#2563eb 0%,transparent 40%),
+    radial-gradient(circle at bottom right,#06b6d4 0%,transparent 35%),
+    linear-gradient(135deg,#0f172a,#020617);
+    overflow:hidden;
+}
+
+body::before{
+    content:"";
+    position:absolute;
+    width:500px;
+    height:500px;
+    background:rgba(255,255,255,.05);
+    filter:blur(120px);
+    border-radius:50%;
+    top:-150px;
+    left:-150px;
+}
+
+.container{
+
+    width:90%;
+    max-width:720px;
+
+    padding:50px;
+
+    border-radius:24px;
+
+    background:rgba(30,41,59,.65);
+
+    backdrop-filter:blur(20px);
+
+    border:1px solid rgba(255,255,255,.15);
+
+    box-shadow:
+        0 25px 60px rgba(0,0,0,.45);
+
+    text-align:center;
+
+}
+
+.logo{
+    font-size:65px;
+    margin-bottom:20px;
+}
+
+h1{
+
+    color:#ffffff;
+    font-size:42px;
+    font-weight:700;
+    margin-bottom:10px;
+
+}
+
+.version{
+
+    display:inline-block;
+    margin-bottom:25px;
+
+    padding:8px 18px;
+
+    background:#2563eb;
+
+    border-radius:30px;
+
+    color:white;
+
+    font-weight:600;
+
+    letter-spacing:.5px;
+
+}
+
+.subtitle{
+
+    color:#cbd5e1;
+
+    font-size:18px;
+
+    margin-bottom:35px;
+
+    line-height:1.7;
+
+}
+
+.status{
+
+    display:flex;
+
+    justify-content:center;
+
+    align-items:center;
+
+    gap:10px;
+
+    margin-bottom:30px;
+
+}
+
+.dot{
+
+    width:12px;
+    height:12px;
+    border-radius:50%;
+    background:#22c55e;
+    animation:pulse 1.5s infinite;
+
+}
+
+@keyframes pulse{
+
+0%{
+    transform:scale(1);
+    opacity:1;
+}
+
+50%{
+    transform:scale(1.6);
+    opacity:.5;
+}
+
+100%{
+    transform:scale(1);
+    opacity:1;
+}
+
+}
+
+.badge{
+
+    padding:10px 20px;
+
+    background:#16a34a;
+
+    border-radius:50px;
+
+    color:white;
+
+    font-weight:600;
+
+}
+
+.info{
+
+    margin-top:40px;
+
+    display:grid;
+
+    grid-template-columns:repeat(auto-fit,minmax(180px,1fr));
+
+    gap:20px;
+
+}
+
+.card{
+
+    background:rgba(255,255,255,.06);
+
+    border:1px solid rgba(255,255,255,.08);
+
+    border-radius:15px;
+
+    padding:20px;
+
+}
+
+.card h3{
+
+    color:#38bdf8;
+
+    margin-bottom:10px;
+
+    font-size:17px;
+
+}
+
+.card p{
+
+    color:#cbd5e1;
+
+    font-size:15px;
+
+}
+
+.footer{
+
+    margin-top:40px;
+
+    color:#94a3b8;
+
+    font-size:14px;
+
+}
+
+@media(max-width:600px){
+
+.container{
+    padding:35px 25px;
+}
+
+h1{
+    font-size:30px;
+}
+
+.logo{
+    font-size:48px;
+}
+
+.subtitle{
+    font-size:16px;
+}
+
+}
+
+</style>
+
 </head>
+
 <body>
-    <div class="container">
-        <h1>CAL_TO_AL_Converter</h1>
-        <p>Automated CI/CD Pipeline Deployment Successful.</p>
-        <span class="badge">Environment: Production</span>
+
+<div class="container">
+
+    <div class="logo">🚀</div>
+
+    <h1>CAL_TO_AL Converter</h1>
+
+    <div class="version">
+        Version 2.0
     </div>
+
+    <p class="subtitle">
+        Your application has been successfully deployed through the automated
+        CI/CD pipeline and is now running in the production environment.
+    </p>
+
+    <div class="status">
+
+        <div class="dot"></div>
+
+        <div class="badge">
+            Production • Live
+        </div>
+
+    </div>
+
+    <div class="info">
+
+        <div class="card">
+            <h3>Deployment</h3>
+            <p>✔ Successful</p>
+        </div>
+
+        <div class="card">
+            <h3>Pipeline</h3>
+            <p>GitHub Actions</p>
+        </div>
+
+        <div class="card">
+            <h3>Environment</h3>
+            <p>Production</p>
+        </div>
+
+        <div class="card">
+            <h3>Status</h3>
+            <p>🟢 Healthy</p>
+        </div>
+
+    </div>
+
+    <div class="footer">
+        © 2026 CAL_TO_AL Converter • Automated Deployment Complete
+    </div>
+
+</div>
+
 </body>
 </html>
