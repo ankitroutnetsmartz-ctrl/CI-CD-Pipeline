@@ -1,9 +1,11 @@
 version: '3.8'
 
 services:
-  web-app:
-    build: .
-    container_name: prod-web-app
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: web_app_prod
     ports:
       - "80:80"
     restart: always
