@@ -8,15 +8,13 @@ jobs:
   deploy_production:
     name: Deploy to Production
     runs-on: self-hosted
-    # If secrets are global repo secrets, comment out or remove the line below:
-    # environment: production
 
     env:
       DEPLOY_DIR: '/var/www/html'
       BACKUP_DIR: '/var/www/backup'
       CONTAINER_NAME: 'web_app_prod'
-      PROD_HOST: ${{ secrets.PROD_HOST }}
-      PROD_USER: ${{ secrets.PROD_USER }}
+      PROD_HOST: ${{ secrets.PROD_VM_IP }}
+      PROD_USER: ${{ secrets.PROD_VM_USERNAME }}
 
     steps:
       - name: Checkout Repository Directly to Runner
@@ -25,7 +23,7 @@ jobs:
       - name: Setup SSH via .pem Key Securely
         run: |
           mkdir -p ~/.ssh
-          echo "${{ secrets.PROD_PEM_KEY }}" > ~/.ssh/prod.pem
+          echo "${{ secrets.PROD_VM_SSH_KEY }}" > ~/.ssh/prod.pem
           chmod 600 ~/.ssh/prod.pem
           ssh-keyscan -H "$PROD_HOST" >> ~/.ssh/known_hosts || true
           echo -e "Host $PROD_HOST\n\tStrictHostKeyChecking no\n\tUserKnownHostsFile /dev/null\n" >> ~/.ssh/config
