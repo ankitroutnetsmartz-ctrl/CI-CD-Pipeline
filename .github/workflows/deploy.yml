@@ -8,12 +8,15 @@ jobs:
   deploy_production:
     name: Deploy to Production
     runs-on: self-hosted
-    environment: production
+    # If secrets are global repo secrets, comment out or remove the line below:
+    # environment: production
 
     env:
-      DEPLOY_DIR: ${{ secrets.PROD_DEPLOY_DIR }}
-      BACKUP_DIR: ${{ secrets.PROD_BACKUP_DIR }}
-      CONTAINER_NAME: ${{ secrets.PROD_CONTAINER_NAME }}
+      DEPLOY_DIR: '/var/www/html'
+      BACKUP_DIR: '/var/www/backup'
+      CONTAINER_NAME: 'web_app_prod'
+      PROD_HOST: ${{ secrets.PROD_HOST }}
+      PROD_USER: ${{ secrets.PROD_USER }}
 
     steps:
       - name: Checkout Repository Directly to Runner
@@ -24,22 +27,22 @@ jobs:
           mkdir -p ~/.ssh
           echo "${{ secrets.PROD_PEM_KEY }}" > ~/.ssh/prod.pem
           chmod 600 ~/.ssh/prod.pem
-          ssh-keyscan -H ${{ secrets.PROD_HOST }} >> ~/.ssh/known_hosts || true
-          echo -e "Host ${{ secrets.PROD_HOST }}\n\tStrictHostKeyChecking no\n\tUserKnownHostsFile /dev/null\n" >> ~/.ssh/config
+          ssh-keyscan -H "$PROD_HOST" >> ~/.ssh/known_hosts || true
+          echo -e "Host $PROD_HOST\n\tStrictHostKeyChecking no\n\tUserKnownHostsFile /dev/null\n" >> ~/.ssh/config
 
       - name: Backup Production (Keep Last 3 Only)
         run: |
-          ssh -o StrictHostKeyChecking=no -i ~/.ssh/prod.pem ${{ secrets.PROD_USER }}@${{ secrets.PROD_HOST }} << 'EOF'
+          ssh -o StrictHostKeyChecking=no -i ~/.ssh/prod.pem "$PROD_USER"@"$PROD_HOST" << 'EOF'
             set -e
             sudo mkdir -p "${{ env.BACKUP_DIR }}"
             TIMESTAMP=$(date +%Y%m%d_%H%M%S)
             
-            if [ -d "${{ env.DEPLOY_DIR }}" ] && [ "$(ls -A ${{ env.DEPLOY_DIR }} 2>/dev/null)" ]; then
+            if [ -d "${{ env.DEPLOY_DIR }}" ] && [ "$(sudo ls -A ${{ env.DEPLOY_DIR }} 2>/dev/null)" ]; then
                 sudo tar --exclude="${{ env.BACKUP_DIR }}" -czf "${{ env.BACKUP_DIR }}/backup_${TIMESTAMP}.tar.gz" -C "${{ env.DEPLOY_DIR }}" .
                 echo "Backup saved successfully."
                 sudo ls -1t "${{ env.BACKUP_DIR }}"/backup_*.tar.gz | tail -n +4 | xargs -r sudo rm -f
             else
-                echo "Deploy folder empty. Skipping backup sequence."
+                echo "Deploy folder empty or missing. Skipping backup sequence."
             fi
           EOF
 
@@ -52,12 +55,12 @@ jobs:
             --rsync-path="sudo rsync" \
             --exclude=".git/" \
             --exclude=".github/" \
-            ./ ${{ secrets.PROD_USER }}@${{ secrets.PROD_HOST }}:${{ env.DEPLOY_DIR }}/
+            ./ "$PROD_USER"@"$PROD_HOST":"${{ env.DEPLOY_DIR }}"/
           echo "--- Incremental sync complete ---"
 
       - name: Enforce Folder Permissions
         run: |
-          ssh -o StrictHostKeyChecking=no -i ~/.ssh/prod.pem ${{ secrets.PROD_USER }}@${{ secrets.PROD_HOST }} << 'EOF'
+          ssh -o StrictHostKeyChecking=no -i ~/.ssh/prod.pem "$PROD_USER"@"$PROD_HOST" << 'EOF'
             sudo chown -R azureuser:azureuser "${{ env.DEPLOY_DIR }}"
             sudo find "${{ env.DEPLOY_DIR }}" -type d -exec chmod 755 {} +
             sudo find "${{ env.DEPLOY_DIR }}" -type f -exec chmod 644 {} +
@@ -65,7 +68,7 @@ jobs:
 
       - name: Rebuild and Restart via Server Local Docker Compose Only
         run: |
-          ssh -o StrictHostKeyChecking=no -i ~/.ssh/prod.pem ${{ secrets.PROD_USER }}@${{ secrets.PROD_HOST }} << 'EOF'
+          ssh -o StrictHostKeyChecking=no -i ~/.ssh/prod.pem "$PROD_USER"@"$PROD_HOST" << 'EOF'
             set -e
             cd "${{ env.DEPLOY_DIR }}"
             
