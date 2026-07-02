@@ -25,12 +25,10 @@ jobs:
           mkdir -p ~/.ssh
           echo "${{ secrets.PROD_VM_SSH_KEY }}" > ~/.ssh/prod.pem
           chmod 600 ~/.ssh/prod.pem
-          ssh-keyscan -H "$PROD_HOST" >> ~/.ssh/known_hosts || true
-          echo -e "Host $PROD_HOST\n\tStrictHostKeyChecking no\n\tUserKnownHostsFile /dev/null\n" >> ~/.ssh/config
 
       - name: Backup Production (Keep Last 3 Only)
         run: |
-          ssh -o StrictHostKeyChecking=no -i ~/.ssh/prod.pem "$PROD_USER"@"$PROD_HOST" << 'EOF'
+          ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i ~/.ssh/prod.pem "$PROD_USER"@"$PROD_HOST" << 'EOF'
             set -e
             sudo mkdir -p "${{ env.BACKUP_DIR }}"
             TIMESTAMP=$(date +%Y%m%d_%H%M%S)
@@ -49,7 +47,7 @@ jobs:
           set -e
           echo "--- Syncing modified files incrementally via rsync ---"
           rsync -avz --delete \
-            -e "ssh -o StrictHostKeyChecking=no -i ~/.ssh/prod.pem" \
+            -e "ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i ~/.ssh/prod.pem" \
             --rsync-path="sudo rsync" \
             --exclude=".git/" \
             --exclude=".github/" \
@@ -58,7 +56,7 @@ jobs:
 
       - name: Enforce Folder Permissions
         run: |
-          ssh -o StrictHostKeyChecking=no -i ~/.ssh/prod.pem "$PROD_USER"@"$PROD_HOST" << 'EOF'
+          ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i ~/.ssh/prod.pem "$PROD_USER"@"$PROD_HOST" << 'EOF'
             sudo chown -R azureuser:azureuser "${{ env.DEPLOY_DIR }}"
             sudo find "${{ env.DEPLOY_DIR }}" -type d -exec chmod 755 {} +
             sudo find "${{ env.DEPLOY_DIR }}" -type f -exec chmod 644 {} +
@@ -66,7 +64,7 @@ jobs:
 
       - name: Rebuild and Restart via Server Local Docker Compose Only
         run: |
-          ssh -o StrictHostKeyChecking=no -i ~/.ssh/prod.pem "$PROD_USER"@"$PROD_HOST" << 'EOF'
+          ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i ~/.ssh/prod.pem "$PROD_USER"@"$PROD_HOST" << 'EOF'
             set -e
             cd "${{ env.DEPLOY_DIR }}"
             
