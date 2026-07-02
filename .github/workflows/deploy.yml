@@ -1,44 +1,156 @@
-name: Production Deployment Pipeline
-
+name: Production Verified Build & Deploy
 on:
   push:
     branches:
       - main
 
 jobs:
-  deploy-to-prod:
-    runs-on: [self-hosted, staging]
+  build:
+    name: Package Application
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
-      - name: Deploy Web Application on Prod VM
-        env:
-          SSH_PRIVATE_KEY: ${{ secrets.PROD_VM_SSH_KEY }}
-          VM_USERNAME: ${{ secrets.PROD_VM_USERNAME }}
-          VM_IP: ${{ secrets.PROD_VM_IP }}
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Package Build Artifact
         run: |
-      
+          tar \
+            --exclude=.git \
+            --exclude=.github \
+            -czf ../production-build.tar.gz .
+
+      - name: Upload Build Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-build
+          path: production-build.tar.gz
+          retention-days: 1
+
+  verify_on_runner:
+    name: Download & Verify on Self-Hosted Runner
+    needs: build
+    runs-on: self-hosted
+
+    steps:
+      - name: Download Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: production-build
+
+      - name: Safe Workspace Initialization & Extraction
+        run: |
+          set -e
+          VERIFY_PATH="${{ github.workspace }}/staging_verify_zone"
+          
+          echo "Ensuring clean verification path inside runner workspace..."
+          mkdir -p "$VERIFY_PATH"
+          rm -rf "$VERIFY_PATH"/*
+          
+          echo "Unpacking package..."
+          tar -xzf production-build.tar.gz -C "$VERIFY_PATH"
+          rm -f production-build.tar.gz
+          
+          echo "RESOLVED_VERIFY_DIR=$VERIFY_PATH" >> $GITHUB_ENV
+
+      - name: Integrity Check
+        run: |
+          echo "Listing verified workspace inside isolated runner path:"
+          ls -lah "$RESOLVED_VERIFY_DIR"
+
+  deploy_production:
+    name: Deploy to Production
+    needs: verify_on_runner
+    runs-on: self-hosted
+    environment: production
+
+    env:
+      DEPLOY_DIR: ${{ secrets.PROD_DEPLOY_DIR }}
+      BACKUP_DIR: ${{ secrets.PROD_BACKUP_DIR }}
+      CONTAINER_NAME: ${{ secrets.PROD_CONTAINER_NAME }}
+
+    steps:
+      - name: Download Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: production-build
+
+      - name: Setup SSH via .pem Key Securely
+        run: |
           mkdir -p ~/.ssh
-          echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
-          chmod 600 ~/.ssh/id_rsa
-          
-          ssh-keyscan -H $VM_IP >> ~/.ssh/known_hosts
-          
-          ssh -i ~/.ssh/id_rsa $VM_USERNAME@$VM_IP << 'EOF'
+          echo "${{ secrets.PROD_PEM_KEY }}" > ~/.ssh/prod.pem
+          chmod 600 ~/.ssh/prod.pem
+          ssh-keyscan -H ${{ secrets.PROD_HOST }} >> ~/.ssh/known_hosts || true
+          echo -e "Host ${{ secrets.PROD_HOST }}\n\tStrictHostKeyChecking no\n\tUserKnownHostsFile /dev/null\n" >> ~/.ssh/config
+
+      - name: Backup Production (Keep Last 3 Only)
+        run: |
+          ssh -o StrictHostKeyChecking=no -i ~/.ssh/prod.pem ${{ secrets.PROD_USER }}@${{ secrets.PROD_HOST }} << 'EOF'
             set -e
+            sudo mkdir -p "${{ env.BACKUP_DIR }}"
+            TIMESTAMP=$(date +%Y%m%d_%H%M%S)
             
-            TARGET_DIR="$HOME/web-app-deployment"
-            
-            if [ ! -d "$TARGET_DIR" ]; then
-              echo "Cloning repository for the first time..."
-              git clone https://github.com/ankitroutnetsmartz-ctrl/CI-CD-Pipeline.git "$TARGET_DIR"
-              cd "$TARGET_DIR"
+            if [ -d "${{ env.DEPLOY_DIR }}" ] && [ "$(ls -A ${{ env.DEPLOY_DIR }} 2>/dev/null)" ]; then
+                sudo tar --exclude="${{ env.BACKUP_DIR }}" -czf "${{ env.BACKUP_DIR }}/backup_${TIMESTAMP}.tar.gz" -C "${{ env.DEPLOY_DIR }}" .
+                echo "Backup saved successfully."
+                sudo ls -1t "${{ env.BACKUP_DIR }}"/backup_*.tar.gz | tail -n +4 | xargs -r sudo rm -f
             else
-              echo "Updating existing deployment files..."
-              cd "$TARGET_DIR"
-              git fetch origin
-              git reset --hard origin/main
+                echo "Deploy folder empty. Skipping backup sequence."
             fi
+          EOF
 
-            docker compose up -d --build
+      - name: Smart Incremental Deployment via rsync
+        run: |
+          set -e
+          mkdir -p /tmp/local_extract
+          rm -rf /tmp/local_extract/*
+          tar -xzf production-build.tar.gz -C /tmp/local_extract
+          
+          echo "--- Syncing modified files incrementally via rsync ---"
+          rsync -avz --delete \
+            -e "ssh -o StrictHostKeyChecking=no -i ~/.ssh/prod.pem" \
+            --rsync-path="sudo rsync" \
+            /tmp/local_extract/ ${{ secrets.PROD_USER }}@${{ secrets.PROD_HOST }}:${{ env.DEPLOY_DIR }}/
+          
+          rm -rf /tmp/local_extract production-build.tar.gz
+          echo "--- Incremental sync complete ---"
 
-            docker image prune -f
+      - name: Enforce Folder Permissions
+        run: |
+          ssh -o StrictHostKeyChecking=no -i ~/.ssh/prod.pem ${{ secrets.PROD_USER }}@${{ secrets.PROD_HOST }} << 'EOF'
+            sudo chown -R azureuser:azureuser "${{ env.DEPLOY_DIR }}"
+            sudo find "${{ env.DEPLOY_DIR }}" -type d -exec chmod 755 {} +
+            sudo find "${{ env.DEPLOY_DIR }}" -type f -exec chmod 644 {} +
+          EOF
+
+      - name: Rebuild and Restart via Server Local Docker Compose Only
+        run: |
+          ssh -o StrictHostKeyChecking=no -i ~/.ssh/prod.pem ${{ secrets.PROD_USER }}@${{ secrets.PROD_HOST }} << 'EOF'
+            set -e
+            cd "${{ env.DEPLOY_DIR }}"
+            
+            echo "🐳 Building Nginx image out of /var/www/html context..."
+            sudo docker compose build --no-cache
+            
+            if [ -n "${{ env.CONTAINER_NAME }}" ]; then
+                if sudo docker ps -a --format '{{.Names}}' | grep -Eq "^${{ env.CONTAINER_NAME }}$"; then
+                    echo "🚨 Removing colliding instance '${{ env.CONTAINER_NAME }}'..."
+                    sudo docker rm -f "${{ env.CONTAINER_NAME }}" 2>/dev/null || true
+                fi
+            fi
+            
+            echo "🚀 Launching target containers via Docker Compose..."
+            sudo docker compose up -d
+            
+            echo "Waiting 5 seconds to monitor container stability..."
+            sleep 5
+            
+            CONTAINER_STATE=$(sudo docker inspect -f '{{.State.Running}}' "${{ env.CONTAINER_NAME }}")
+            if [ "$CONTAINER_STATE" = "true" ]; then
+                echo "✅ Success! Application container is running stable."
+                sudo docker compose ps
+            else
+                echo "❌ CRITICAL FAILURE: Container crashed!"
+                exit 1
+            fi
           EOF
