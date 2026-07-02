@@ -5,62 +5,8 @@ on:
       - main
 
 jobs:
-  build:
-    name: Package Application
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
-
-      - name: Package Build Artifact
-        run: |
-          tar \
-            --exclude=.git \
-            --exclude=.github \
-            -czf ../production-build.tar.gz .
-
-      - name: Upload Build Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: production-build
-          path: production-build.tar.gz
-          retention-days: 1
-
-  verify_on_runner:
-    name: Download & Verify on Self-Hosted Runner
-    needs: build
-    runs-on: self-hosted
-
-    steps:
-      - name: Download Artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: production-build
-
-      - name: Safe Workspace Initialization & Extraction
-        run: |
-          set -e
-          VERIFY_PATH="${{ github.workspace }}/staging_verify_zone"
-          
-          echo "Ensuring clean verification path inside runner workspace..."
-          mkdir -p "$VERIFY_PATH"
-          rm -rf "$VERIFY_PATH"/*
-          
-          echo "Unpacking package..."
-          tar -xzf production-build.tar.gz -C "$VERIFY_PATH"
-          rm -f production-build.tar.gz
-          
-          echo "RESOLVED_VERIFY_DIR=$VERIFY_PATH" >> $GITHUB_ENV
-
-      - name: Integrity Check
-        run: |
-          echo "Listing verified workspace inside isolated runner path:"
-          ls -lah "$RESOLVED_VERIFY_DIR"
-
   deploy_production:
     name: Deploy to Production
-    needs: verify_on_runner
     runs-on: self-hosted
     environment: production
 
@@ -70,10 +16,8 @@ jobs:
       CONTAINER_NAME: ${{ secrets.PROD_CONTAINER_NAME }}
 
     steps:
-      - name: Download Artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: production-build
+      - name: Checkout Repository Directly to Runner
+        uses: actions/checkout@v4
 
       - name: Setup SSH via .pem Key Securely
         run: |
@@ -102,17 +46,13 @@ jobs:
       - name: Smart Incremental Deployment via rsync
         run: |
           set -e
-          mkdir -p /tmp/local_extract
-          rm -rf /tmp/local_extract/*
-          tar -xzf production-build.tar.gz -C /tmp/local_extract
-          
           echo "--- Syncing modified files incrementally via rsync ---"
           rsync -avz --delete \
             -e "ssh -o StrictHostKeyChecking=no -i ~/.ssh/prod.pem" \
             --rsync-path="sudo rsync" \
-            /tmp/local_extract/ ${{ secrets.PROD_USER }}@${{ secrets.PROD_HOST }}:${{ env.DEPLOY_DIR }}/
-          
-          rm -rf /tmp/local_extract production-build.tar.gz
+            --exclude=".git/" \
+            --exclude=".github/" \
+            ./ ${{ secrets.PROD_USER }}@${{ secrets.PROD_HOST }}:${{ env.DEPLOY_DIR }}/
           echo "--- Incremental sync complete ---"
 
       - name: Enforce Folder Permissions
